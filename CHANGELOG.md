@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.4.1 (2026-08-17)
+
+- **perf:** GUI: CPU stats no longer block the UI thread for 100ms every second — the psutil CPU baseline is seeded at startup and `cpu_percent()` is called non-blocking, fixing the periodic UI stutter.
+- **fix:** GUI: Discord input fields (webhook/token/channel) are now hidden when Discord is disabled.
+- **fix:** GUI: The console now uses a platform-appropriate monospace font (Consolas on Windows, Menlo on macOS, DejaVu Sans Mono on Linux) instead of hardcoded Consolas.
+- **docs:** README: corrected the `modded_do_not_update` default — it is `true` in the code.
+
 ## 5.4.0 (2026-08-17)
 
 - **feat:** Console mode: Type lines into the terminal to send live commands to the server (`list players`, `say hello`, ...).

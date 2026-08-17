@@ -2,7 +2,7 @@
 
 A Python-based management tool for dedicated Minecraft servers with automated updates, backups, and griefing protection via a modern PySide6 GUI or headless console mode.
 
-[![Version](https://img.shields.io/badge/version-5.4.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-5.4.1-blue.svg)]()
 [![Python](https://img.shields.io/badge/python-3.8%2B-yellow.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
@@ -127,7 +127,7 @@ Settings are stored in `mcsm.conf` (created on first run).
 | `server_memory` | Java heap size (e.g., `4G`, `8G`) | `4G` |
 | `check_updates` | Check for Minecraft updates on startup | `true` |
 | `update_to_snapshot` | Use latest snapshot instead of release | `false` |
-| `modded_do_not_update` | Skip updates when mods are detected | `false` |
+| `modded_do_not_update` | Skip updates when mods are detected | `true` |
 | `enable_backups` | Create backup before starting server | `true` |
 | `max_backups` | Number of backups to retain | `3` |
 | `enable_auto_restart` | Restart server on crash | `true` |

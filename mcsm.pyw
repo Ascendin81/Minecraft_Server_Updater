@@ -59,7 +59,7 @@ if platform.system() == "Windows":
 else:
     CREATE_NO_WINDOW = 0
 
-__version__ = "5.4.0"
+__version__ = "5.4.1"
 
 JAVA_VERSION_REQ = 21  # Minecraft 1.17+ requires 16/17, 1.20.5+ requires 21
 SERVER_JAR = "minecraft_server.jar"
@@ -67,6 +67,7 @@ MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
 IS_WINDOWS = platform.system() == "Windows"
 IS_DARWIN = platform.system() == "Darwin"
 IS_LINUX = platform.system() == "Linux"
+CONSOLE_FONT_FAMILY = "Consolas" if IS_WINDOWS else "Menlo" if IS_DARWIN else "DejaVu Sans Mono"
 
 # Always resolve paths relative to the script's own directory.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1452,6 +1453,11 @@ def run_gui_mode():
             super().__init__()
             self.setWindowTitle(f"Minecraft Server Manager v{__version__}")
             self.setFixedSize(1080, 800)
+            if HAS_PSUTIL:
+                try:
+                    psutil.cpu_percent(interval=None)  # Seed CPU baseline; later calls are non-blocking.
+                except Exception:
+                    pass
             self.config = load_config()
             self.is_dark = self.config.get("dark_mode", True)
             self.log_queue = queue.Queue()
@@ -1574,10 +1580,19 @@ def run_gui_mode():
             self.cb_discord.setChecked(self.config.get("enable_discord", False))
             self.cb_discord.stateChanged.connect(self.save)
             config_col2.addWidget(self.cb_discord)
+            discord_box = QFrame()
+            discord_box.setFrameShape(QFrame.NoFrame)
+            discord_frame_layout = QVBoxLayout(discord_box)
+            discord_frame_layout.setContentsMargins(0, 0, 0, 0)
+            discord_frame_layout.setSpacing(2)
             discord_grid = QGridLayout()
             discord_grid.setHorizontalSpacing(4)
             discord_grid.setVerticalSpacing(2)
-            for row_idx, (lbl, attr, secure) in enumerate([("Webhook", "entry_webhook", False), ("Token", "entry_token", True), ("Channel", "entry_channel", False)]):
+            for row_idx, (lbl, attr, secure) in enumerate([
+                ("Webhook", "entry_webhook", False),
+                ("Token", "entry_token", True),
+                ("Channel", "entry_channel", False),
+            ]):
                 discord_grid.addWidget(QLabel(lbl), row_idx, 0)
                 e = QLineEdit()
                 if secure:
@@ -1591,7 +1606,10 @@ def run_gui_mode():
                     e.setText(str(self.config.get("discord_channel_id", 0)))
                 e.editingFinished.connect(self.save)
                 discord_grid.addWidget(e, row_idx, 1)
-            config_col2.addLayout(discord_grid)
+            discord_frame_layout.addLayout(discord_grid)
+            config_col2.addWidget(discord_box)
+            discord_box.setVisible(self.cb_discord.isChecked())
+            self.cb_discord.toggled.connect(discord_box.setVisible)
             config_col2.addStretch()
 
             config_layout.addLayout(config_col1, 1)
@@ -1724,7 +1742,7 @@ def run_gui_mode():
 
             self.console = QPlainTextEdit()
             self.console.setReadOnly(True)
-            self.console.setFont(QFont("Consolas", 8))
+            self.console.setFont(QFont(CONSOLE_FONT_FAMILY, 8))
             self.console.setMaximumBlockCount(1000)
             self.console.setMinimumHeight(300)
             main.addWidget(self.console, 1)
@@ -1978,7 +1996,7 @@ def run_gui_mode():
                 self.lbl_uptime.setText(uptime_text)
             if HAS_PSUTIL:
                 try:
-                    cpu_load = psutil.cpu_percent(interval=0.1)
+                    cpu_load = psutil.cpu_percent()
                     ram_load = psutil.virtual_memory().percent
                     self.lbl_cpu.setText(f"CPU: {cpu_load}%")
                     self.lbl_ram.setText(f"RAM: {ram_load}%")
@@ -2290,7 +2308,7 @@ def run_gui_mode():
                 #btnStop:disabled {{ color: #666; }}
             """
             self.setStyleSheet(qss)
-            self.console.setStyleSheet(f"QPlainTextEdit {{ background: {console_bg}; color: {console_fg}; font-family: Consolas; font-size: 11px; }}")
+            self.console.setStyleSheet(f"QPlainTextEdit {{ background: {console_bg}; color: {console_fg}; font-family: {CONSOLE_FONT_FAMILY}; font-size: 11px; }}")
             self._refresh_uptime()
 
         def toggle_theme(self):
