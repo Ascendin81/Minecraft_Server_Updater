@@ -2,7 +2,7 @@
 
 A Python-based management tool for dedicated Minecraft servers with automated updates, backups, and griefing protection via a modern PySide6 GUI or headless console mode.
 
-[![Version](https://img.shields.io/badge/version-5.2.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-5.4.0-blue.svg)]()
 [![Python](https://img.shields.io/badge/python-3.8%2B-yellow.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
@@ -56,13 +56,13 @@ A Python-based management tool for dedicated Minecraft servers with automated up
 | **Java** | Java 17 or Java 21 (depends on server version) |
 | **Python** | 3.8 or higher |
 | **Python packages** | `psutil`, `PySide6` |
-| **Optional** | `discord.py` for Discord bot, `rich` for console formatting |
+| **Optional** | `discord.py` for Discord bot |
 
 Install dependencies:
 ```bash
 pip install psutil PySide6
 # Optional:
-pip install discord.py rich
+pip install discord.py
 ```
 
 ---
@@ -105,11 +105,13 @@ python mcsm.pyw -nogui
 
 Runs without a GUI, reading settings from `mcsm.conf`. Ideal for headless servers.
 
+In console mode you can type lines directly into the terminal to send commands to the server (e.g. `list players`, `say hello`). `Ctrl+C` or `SIGTERM` (e.g. `systemctl stop`) performs a graceful shutdown: the server is asked to `stop`, given time to exit, then escalated to `SIGTERM`/`SIGKILL` if needed.
+
 ### Command-Line Options
 
 | Option | Description |
 | :--- | :--- |
-| `-nogui` | Run in console-only mode |
+| `-nogui` | Run in console-only mode (type lines to send server commands) |
 | `-install-service` | (Linux) Install as systemd service |
 | `-enable-autostart` | (Linux) Add to desktop autostart |
 | `-help` | Display help and exit |

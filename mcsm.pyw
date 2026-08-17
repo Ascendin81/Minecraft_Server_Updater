@@ -41,6 +41,7 @@ import json
 import traceback
 import webbrowser
 import hashlib
+import signal
 
 _debug("IMPORT", "core stdlib imports done")
 try:
@@ -58,7 +59,7 @@ if platform.system() == "Windows":
 else:
     CREATE_NO_WINDOW = 0
 
-__version__ = "5.3.5"
+__version__ = "5.4.0"
 
 JAVA_VERSION_REQ = 21  # Minecraft 1.17+ requires 16/17, 1.20.5+ requires 21
 SERVER_JAR = "minecraft_server.jar"
@@ -79,11 +80,6 @@ LOG_FILE = os.path.join(BASE_DIR, "mcsm.log")
 CONFIG_FILE = os.path.join(BASE_DIR, "mcsm.conf")
 LOCK_FILE = os.path.join(BASE_DIR, ".mcsm.lock")
 
-try:
-    from rich.console import Console
-    console = Console()
-except ImportError:
-    console = None
 
 try:
     import discord
@@ -377,10 +373,6 @@ class MinecraftUpdaterCore:
 
     def log(self, message, tag=None):
         self.log_callback(message, tag)
-        if console and not tag:
-             if not message.startswith("["):
-                 ts = datetime.datetime.now().strftime("[%H:%M:%S]")
-                 console.log(f"{ts} {message}")
 
     def update_status(self, status):
         if self.status_callback:
@@ -607,6 +599,8 @@ import time
 import sys
 import subprocess
 
+_WIN_KWARGS = {{"creationflags": 0x08000000}} if os.name == 'nt' else {{}}
+
 pid = {os.getpid()}
 print(f"Waiting for parent process {{pid}} to close...")
 
@@ -649,16 +643,12 @@ try:
     if pyw_path.lower().endswith(".pyw") and os.path.exists(pyw_path) and not os.path.exists(py_path):
         is_tracked = False
         try:
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
             r = subprocess.run(
                 ["git", "ls-files", os.path.basename(py_path)], 
                 capture_output=True, 
                 text=True, 
                 cwd=working_dir,
-                creationflags=0x08000000,
-                startupinfo=startupinfo
+                **_WIN_KWARGS
             )
             if r.returncode == 0 and os.path.basename(py_path) in r.stdout:
                 is_tracked = True
@@ -673,16 +663,12 @@ try:
                 print(f"Failed to rename: {{re_err}}")
 
     print("Running git pull...")
-    startupinfo = subprocess.STARTUPINFO()
-    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startupinfo.wShowWindow = subprocess.SW_HIDE
     pull_res = subprocess.run(
         ["git", "pull"], 
         capture_output=True, 
         text=True, 
         cwd=working_dir,
-        creationflags=0x08000000,
-        startupinfo=startupinfo
+        **_WIN_KWARGS
     )
     if pull_res.returncode == 0:
         print("Git pull successful.")
@@ -724,7 +710,7 @@ try:
             else:
                 python_exe = python_exe.replace("python.exe", "pythonw.exe").replace("python", "pythonw")
         
-        subprocess.Popen([python_exe] + args, creationflags=0x08000000)
+        subprocess.Popen([python_exe] + args, **_WIN_KWARGS)
     else:
         subprocess.Popen([sys.executable] + args)
 except Exception as e:
@@ -839,10 +825,21 @@ except Exception as e:
             else:
                 self.log(f"Downloading {SERVER_JAR}...")
                 req_dl = urllib.request.Request(download_url)
+                part_file = SERVER_JAR + ".part"
                 with urllib.request.urlopen(req_dl, timeout=30) as dl_resp:
-                    with open(SERVER_JAR, "wb") as f:
+                    with open(part_file, "wb") as f:
                         while chunk := dl_resp.read(65536):
                             f.write(chunk)
+                if self.get_local_sha1(part_file) != remote_sha:
+                    try:
+                        os.remove(part_file)
+                    except OSError:
+                        pass
+                    self.log("ERROR: Downloaded JAR failed SHA1 verification. Update aborted.")
+                    return False
+                if os.path.exists(SERVER_JAR):
+                    os.remove(SERVER_JAR)
+                os.rename(part_file, SERVER_JAR)
             
             self.config["last_server_version"] = target_ver
             save_config(self.config)
@@ -882,9 +879,22 @@ except Exception as e:
                 cmd = ["pgrep", "-f", SERVER_JAR]
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode == 0 and result.stdout.strip():
-                    for pid in result.stdout.strip().splitlines():
+                    pids = [p for p in result.stdout.strip().splitlines() if p.isdigit()]
+                    for pid in pids:
                         self.log(f"Found running server (PID: {pid}). Stopping...")
                         subprocess.run(["kill", pid])
+                    # Wait for the old server to release its port before starting a new one.
+                    deadline = time.time() + 15
+                    for pid in pids:
+                        while time.time() < deadline:
+                            try:
+                                os.kill(int(pid), 0)
+                            except OSError:
+                                break
+                            time.sleep(0.5)
+                        else:
+                            self.log(f"Server (PID: {pid}) did not exit in time. Killing...")
+                            subprocess.run(["kill", "-9", pid])
             except Exception:
                 pass
 
@@ -1089,10 +1099,20 @@ except Exception as e:
                 if self.server_process.stdin:
                     self.server_process.stdin.write(b"stop\n")
                     self.server_process.stdin.flush()
-                self.server_process.wait(timeout=30)
+            except Exception:
+                pass
+            try:
+                self.server_process.wait(timeout=15)
             except subprocess.TimeoutExpired:
-                self.log("Server did not stop in time. Killing process...")
-                if self.server_process:
+                if not IS_WINDOWS:
+                    self.log("Server did not stop in time. Sending SIGTERM...")
+                    try:
+                        self.server_process.terminate()
+                        self.server_process.wait(timeout=15)
+                    except (subprocess.TimeoutExpired, OSError):
+                        pass
+                if self.server_process.poll() is None:
+                    self.log("Server did not stop in time. Killing process...")
                     self.server_process.kill()
                     self.server_process.wait()
             except Exception as e:
@@ -1241,19 +1261,62 @@ def disable_autostart():
 
 # --- Modes ---
 def run_console_mode():
+    """Runs the manager in console-only mode."""
+    log_handle = None
+
     def console_logger(msg, tag=None):
+        """Callback for logging messages in console mode."""
+        nonlocal log_handle
         ts = datetime.datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
-        if not console: print(f"{ts} {msg}")
+        print(f"{ts} {msg}")
         try:
-            with open(LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(f"{ts} {msg}\n")
-        except OSError: pass
+            if log_handle is None:
+                log_handle = open(LOG_FILE, "a", encoding="utf-8")
+            log_handle.write(f"{ts} {msg}\n")
+            log_handle.flush()
+        except OSError:
+            log_handle = None
+
     config = load_config()
     core = MinecraftUpdaterCore(console_logger, input_callback=input, config=config)
+
+    print("--- Console Mode ---")
+    print("Type a line to send it to the server console. Ctrl+C stops the manager and server.")
+
+    def _command_reader():
+        """Reads operator commands from stdin and forwards them to the server."""
+        try:
+            for line in sys.stdin:
+                cmd = line.strip()
+                if cmd:
+                    core.send_command(cmd)
+        except (EOFError, OSError):
+            pass
+
+    # Under systemd/no-tty, stdin is EOF (/dev/null) so this thread exits immediately.
+    if sys.stdin is not None and not sys.stdin.closed:
+        threading.Thread(target=_command_reader, daemon=True).start()
+
     core.start_server_sequence()
+    # systemd sends SIGTERM on 'systemctl stop'; translate it to a graceful shutdown.
+    def _sigterm_handler(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     try:
         while True: time.sleep(1)
-    except KeyboardInterrupt: core.stop_server()
+    except KeyboardInterrupt:
+        core.stop_server()
+    finally:
+        # Let the monitor thread log the final "Server exited" line before we close the log.
+        if core.monitor_thread and core.monitor_thread.is_alive():
+            core.monitor_thread.join(timeout=3)
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except OSError:
+                pass
 
 def run_gui_mode():
     """Starts the graphical user interface using PySide6."""
@@ -2268,7 +2331,7 @@ def print_help():
     print("=" * 60)
     print("Usage: python mcsm.pyw [options]")
     print("\nCommand Line Options:")
-    print("  -nogui             : Run in console-only mode (headless).")
+    print("  -nogui             : Run in console-only mode (headless). Type lines to send server commands.")
     print("  -install-service   : (Linux) Installs systemd service.")
     print("  -enable-autostart  : (Linux/macOS) Adds to user autostart (desktop shortcut/LaunchAgent).")
     print("  -disable-autostart : Removes from user autostart.")

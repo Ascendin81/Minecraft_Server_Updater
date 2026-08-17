@@ -1,5 +1,16 @@
 # Changelog
 
+## 5.4.0 (2026-08-17)
+
+- **feat:** Console mode: Type lines into the terminal to send live commands to the server (`list players`, `say hello`, ...).
+- **fix:** Console mode: Graceful shutdown on `Ctrl+C`/`SIGTERM` (e.g. `systemctl stop`). The server is asked to `stop`, then escalated to `SIGTERM` (Linux/macOS) and finally `SIGKILL` if it does not exit in time.
+- **fix:** Console mode: Server stdout/stderr were silently swallowed whenever the optional `rich` package happened to be installed (and untagged messages were double-timestamped). Console output is now always a single, deterministic timestamped line; the `rich` dependency has been removed.
+- **fix:** Console mode: The final `Server exited (Code N)` line could be lost when the process exited before the monitor thread logged it. The monitor thread is now joined before the log file is closed.
+- **fix:** Console mode: The log file is now kept open and flushed per line instead of opened and closed for every message.
+- **fix:** Self-updater: The git-based self-update installer now works on Linux and macOS (it previously embedded Windows-only `creationflags`/`STARTUPINFO` and crashed on POSIX systems).
+- **fix:** Updates: Server JAR downloads are staged to `minecraft_server.jar.part`, verified against the Mojang manifest SHA1, and atomically renamed; a mismatched download aborts the update instead of corrupting the JAR.
+- **fix:** Startup: When stopping an already-running server, PIDs are validated, the manager waits up to 15s for the old process to release its port before starting, and escalates to `kill -9` for stragglers.
+
 ## 5.3.5 (2026-07-09)
 
 - **fix:** Locking: Prevent PID reuse conflicts (e.g., from other scripts like Hytale's `hsm.pyw` or unrelated processes reclaiming the same PID). The single-instance lock file now records both the PID and the absolute script path, and `psutil` checks if the running process command-line actually references this script, preventing stale locks from blocking unattended start on reboot.
